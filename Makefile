@@ -4,6 +4,8 @@ CFLAGS = -O2 -Wall
 # MAC_BUILD - set this to "universal" to build a 2-way fat library 
 MAC_BUILD = universal
 
+ARCH=x86_64
+
 # if ARCH set, disable universal build on the mac
 ifdef ARCH
 MAC_BUILD =
@@ -64,7 +66,14 @@ headers = usdt.h usdt_internal.h
 
 .c.o: $(headers)
 
+ifeq ($(UNAME), Darwin)
+all: libusdt.a libusdt.dylib
+else
 all: libusdt.a
+endif
+
+libusdt.dylib: $(objects)
+	$(CC) $(CFLAGS) -dynamiclib -o $@ $^
 
 libusdt.a: $(objects) $(headers)
 	rm -f libusdt.a
