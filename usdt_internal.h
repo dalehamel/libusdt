@@ -2,6 +2,9 @@
  * Copyright (c) 2012, Chris Andrews. All rights reserved.
  */
 
+#ifndef __LIB_USDT_USDT_INTERNAL_H__
+#define __LIB_USDT_USDT_INTERNAL_H__
+
 #ifdef __linux__
 #include <endian.h>
 #if __BYTE_ORDER == __LITTLE_ENDIAN
@@ -101,3 +104,4 @@ int usdt_dof_prenoffs_sect(usdt_dof_section_t *prenoffs,
 int usdt_dof_provider_sect(usdt_dof_section_t *provider_s,
                            usdt_provider_t *provider);
 
+#endif // __LIB_USDT_USDT_INTERNAL_H__

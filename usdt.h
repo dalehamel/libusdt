@@ -2,6 +2,9 @@
  * Copyright (c) 2012, Chris Andrews. All rights reserved.
  */
 
+#ifndef __LIB_USDT_USDT_H__
+#define __LIB_USDT_USDT_H__
+
 #include <stdint.h>
 #include <unistd.h>
 
@@ -59,3 +62,4 @@ void usdt_provider_free(usdt_provider_t *provider);
 void usdt_error(usdt_provider_t *provider, usdt_error_t error, ...);
 char *usdt_errstr(usdt_provider_t *provider);
 
+#endif // __LIB_USDT_USDT_H__
