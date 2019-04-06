@@ -124,6 +124,7 @@ clean:
 	rm -f *.gch
 	rm -f *.o
 	rm -f libusdt.a
+	rm -f libusdt.dylib
 	rm -f test_usdt
 	rm -f test_usdt32
 	rm -f test_usdt64
