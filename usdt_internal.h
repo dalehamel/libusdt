@@ -35,8 +35,8 @@ extern void usdt_tracepoint_probe(void);
 extern void usdt_tracepoint_end(void);
 extern void usdt_probe_args(void *, int, void**);
 
-uint32_t usdt_probe_offset(usdt_probe_t *probe, char *dof, uint8_t argc);
-uint32_t usdt_is_enabled_offset(usdt_probe_t *probe, char *dof);
+uint64_t usdt_probe_offset(usdt_probe_t *probe, char *dof, uint8_t argc);
+uint64_t usdt_is_enabled_offset(usdt_probe_t *probe, char *dof);
 int usdt_create_tracepoints(usdt_probe_t *probe);
 void usdt_free_tracepoints(usdt_probe_t *probe);
 

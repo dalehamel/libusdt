@@ -4,65 +4,21 @@
 
 #include "usdt_internal.h"
 
-#ifdef __APPLE__
-
-uint32_t
+uint64_t
 usdt_probe_offset(usdt_probe_t *probe, char *dof, uint8_t argc)
 {
-        uint32_t offset;
-#ifdef __x86_64__
+        uint64_t offset;
         offset = ((uint64_t) probe->probe_addr - (uint64_t) dof + 2);
-#elif __i386__
-        offset = ((uint32_t) probe->probe_addr - (uint32_t) dof + 2);
-#else
-#error "only x86_64 and i386 supported"
-#endif
         return (offset);
 }
 
-uint32_t
+uint64_t
 usdt_is_enabled_offset(usdt_probe_t *probe, char *dof) 
 {
-        uint32_t offset;
-#ifdef __x86_64__
+        uint64_t offset;
         offset = ((uint64_t) probe->isenabled_addr - (uint64_t) dof + 6);
-#elif __i386__
-        offset = ((uint32_t) probe->isenabled_addr - (uint32_t) dof + 6);
-#else
-#error "only x86_64 and i386 supported"
-#endif
         return (offset);
 }
-
-#elif defined __linux__
-
-uint32_t
-usdt_probe_offset(usdt_probe_t *probe, char *dof, uint8_t argc)
-{
-        return (16);
-}
-
-uint32_t
-usdt_is_enabled_offset(usdt_probe_t *probe, char *dof)
-{
-        return (10);
-}
-
-#else /* solaris and freebsd */
-
-uint32_t
-usdt_probe_offset(usdt_probe_t *probe, char *dof, uint8_t argc)
-{
-        return (16);
-}
-
-uint32_t
-usdt_is_enabled_offset(usdt_probe_t *probe, char *dof)
-{
-        return (8);
-}
-
-#endif
 
 int
 usdt_create_tracepoints(usdt_probe_t *probe)
@@ -81,7 +37,6 @@ usdt_create_tracepoints(usdt_probe_t *probe)
          */
 
         size_t size;
-#ifdef __linux__
         int fd;
         char tmp[20] = "/tmp/libusdtXXXXXX";
 
@@ -95,9 +50,9 @@ usdt_create_tracepoints(usdt_probe_t *probe)
         probe->isenabled_addr = (int (*)())mmap(NULL, FUNC_SIZE,
                                                 PROT_READ | PROT_WRITE | PROT_EXEC,
                                                 MAP_PRIVATE, fd, 0);
-#else
-        probe->isenabled_addr = (int (*)())valloc(FUNC_SIZE);
-#endif
+// FIXME - is valloc working? Above code is meant for linux, but may work?
+//        probe->isenabled_addr = (int (*)())valloc(FUNC_SIZE); // <<-- Orig for Darwin?
+
         if (probe->isenabled_addr == NULL)
                 return (-1);
 
@@ -111,13 +66,10 @@ usdt_create_tracepoints(usdt_probe_t *probe)
         memcpy((void *)probe->isenabled_addr,
                (const void *)usdt_tracepoint_isenabled, FUNC_SIZE);
 
-#ifdef __linux__
-        mprotect((void *)probe->isenabled_addr, FUNC_SIZE,
+        mprotect((void *)probe->isenabled_addr, FUNC_SIZE, // << - Meant for linux?
                  PROT_READ | PROT_EXEC);
-#else
-        mprotect((void *)probe->isenabled_addr, FUNC_SIZE,
-                 PROT_READ | PROT_WRITE | PROT_EXEC);
-#endif
+//        mprotect((void *)probe->isenabled_addr, FUNC_SIZE, << - Orig for Darwin
+//                 PROT_READ | PROT_WRITE | PROT_EXEC);
 
         return (0);
 }
@@ -125,9 +77,6 @@ usdt_create_tracepoints(usdt_probe_t *probe)
 void
 usdt_free_tracepoints(usdt_probe_t *probe)
 {
-#ifdef __linux__
         (void) munmap(probe->isenabled_addr, FUNC_SIZE);
-#else
-        free(probe->isenabled_addr);
-#endif
+        // free(probe->isenabled_addr); << - Orig for darwin
 }
