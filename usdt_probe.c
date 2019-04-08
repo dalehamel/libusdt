@@ -4,21 +4,8 @@
 
 #include "usdt_internal.h"
 
-uint64_t
-usdt_probe_offset(usdt_probe_t *probe, char *dof, uint8_t argc)
-{
-        uint64_t offset;
-        offset = ((uint64_t) probe->probe_addr - (uint64_t) dof + 2);
-        return (offset);
-}
-
-uint64_t
-usdt_is_enabled_offset(usdt_probe_t *probe, char *dof) 
-{
-        uint64_t offset;
-        offset = ((uint64_t) probe->isenabled_addr - (uint64_t) dof + 6);
-        return (offset);
-}
+void funcStart();
+void funcEnd();
 
 int
 usdt_create_tracepoints(usdt_probe_t *probe)
@@ -37,36 +24,35 @@ usdt_create_tracepoints(usdt_probe_t *probe)
          */
 
         size_t size;
-        int fd;
-        char tmp[20] = "/tmp/libusdtXXXXXX";
-
-        if ((fd = mkstemp(tmp)) < 0)
-                return (-1);
-        if (unlink(tmp) < 0)
-                return (-1);
-        if (write(fd, "\0", FUNC_SIZE) < FUNC_SIZE)
-                return (-1);
-
-        probe->isenabled_addr = (int (*)())mmap(NULL, FUNC_SIZE,
-                                                PROT_READ | PROT_WRITE | PROT_EXEC,
-                                                MAP_PRIVATE, fd, 0);
+//        int fd;
+//        char tmp[20] = "/tmp/libusdtXXXXXX";
+//
+//        if ((fd = mkstemp(tmp)) < 0)
+//                return (-1);
+//        if (unlink(tmp) < 0)
+//                return (-1);
+//        if (write(fd, "\0", FUNC_SIZE) < FUNC_SIZE)
+//                return (-1);
+//
+//        probe->isenabled_addr = (int (*)())mmap(NULL, FUNC_SIZE,
+//                                                PROT_READ | PROT_WRITE | PROT_EXEC,
+//                                                MAP_PRIVATE, fd, 0);
 // FIXME - is valloc working? Above code is meant for linux, but may work?
-//        probe->isenabled_addr = (int (*)())valloc(FUNC_SIZE); // <<-- Orig for Darwin?
+        probe->_fire = (int (*)())valloc(FUNC_SIZE); // <<-- Orig for Darwin?
 
-        if (probe->isenabled_addr == NULL)
+        if (probe->_fire == NULL)
                 return (-1);
 
         /* ensure that the tracepoints will fit the heap we're allocating */
-        size = ((char *)usdt_tracepoint_end - (char *)usdt_tracepoint_isenabled);
+        size = (unsigned long long)funcEnd - (unsigned long long)funcStart;
         assert(size < FUNC_SIZE);
 
-        size = ((char *)usdt_tracepoint_probe - (char *)usdt_tracepoint_isenabled);
-        probe->probe_addr = (char *)probe->isenabled_addr + size;
+        probe->_fire = funcStart;
 
-        memcpy((void *)probe->isenabled_addr,
-               (const void *)usdt_tracepoint_isenabled, FUNC_SIZE);
+        memcpy((void *)probe->_fire,
+               (const void *)funcStart, FUNC_SIZE);
 
-        mprotect((void *)probe->isenabled_addr, FUNC_SIZE, // << - Meant for linux?
+        mprotect((void *)probe->_fire, FUNC_SIZE, // << - Meant for linux?
                  PROT_READ | PROT_EXEC);
 //        mprotect((void *)probe->isenabled_addr, FUNC_SIZE, << - Orig for Darwin
 //                 PROT_READ | PROT_WRITE | PROT_EXEC);
@@ -77,6 +63,6 @@ usdt_create_tracepoints(usdt_probe_t *probe)
 void
 usdt_free_tracepoints(usdt_probe_t *probe)
 {
-        (void) munmap(probe->isenabled_addr, FUNC_SIZE);
+        (void) munmap(probe->_fire, FUNC_SIZE);
         // free(probe->isenabled_addr); << - Orig for darwin
 }

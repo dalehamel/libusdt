@@ -8,8 +8,8 @@ int
 usdt_dof_probes_sect(usdt_dof_section_t *probes,
                      usdt_provider_t *provider, usdt_strtab_t *strtab)
 {
-        usdt_probedef_t *pd;
-        dof_probe_t p;
+        usdt_probe_t *p;
+        dof_probe_t dp;
         dof_stridx_t type, argv;
         uint8_t argc, i;
         uint32_t argidx = 0;
@@ -17,45 +17,38 @@ usdt_dof_probes_sect(usdt_dof_section_t *probes,
 
         usdt_dof_section_init(probes, DOF_SECT_PROBES, 1);
 
-        for (pd = provider->probedefs; pd != NULL; pd = pd->next) {
+        for (p = provider->probes; p != NULL; p = p->next) {
                 argc = 0;
                 argv = 0;
                 type = 0;
 
-                for (i = 0; i < pd->argc; i++) {
-                        type = usdt_strtab_add(strtab, pd->types[i]);
+                for (i = 0; i < p->argc; i++) {
+                        type = usdt_strtab_add(strtab, p->types[i]);
                         argc++;
                         if (argv == 0)
                                 argv = type;
                 }
 
-                if (usdt_create_tracepoints(pd->probe) < 0) {
+                if (usdt_create_tracepoints(p) < 0) {
                         usdt_error(provider, USDT_ERROR_VALLOC);
                         return (-1);
                 }
 
-#ifdef __x86_64__
-                p.dofpr_addr     = (uint64_t) pd->probe->isenabled_addr;
-#elif __i386__ || __i386
-                p.dofpr_addr     = (uint32_t) pd->probe->isenabled_addr;
-#else
-#error "only x86_64 and i386 supported"
-#endif
-                p.dofpr_func     = usdt_strtab_add(strtab, pd->function);
-                p.dofpr_name     = usdt_strtab_add(strtab, pd->name);
-                p.dofpr_nargv    = argv;
-                p.dofpr_xargv    = argv;
-                p.dofpr_argidx   = argidx;
-                p.dofpr_offidx   = offidx;
-                p.dofpr_nargc    = argc;
-                p.dofpr_xargc    = argc;
-                p.dofpr_noffs    = 1;
-                p.dofpr_enoffidx = offidx;
-                p.dofpr_nenoffs  = 1;
-                p.dofpr_pad1     = 0;
-                p.dofpr_pad2     = 0;
+                dp.dofpr_addr     = (uint64_t) p->_fire;
+                dp.dofpr_name     = usdt_strtab_add(strtab, p->name);
+                dp.dofpr_nargv    = argv;
+                dp.dofpr_xargv    = argv;
+                dp.dofpr_argidx   = argidx;
+                dp.dofpr_offidx   = offidx;
+                dp.dofpr_nargc    = argc;
+                dp.dofpr_xargc    = argc;
+                dp.dofpr_noffs    = 1;
+                dp.dofpr_enoffidx = offidx;
+                dp.dofpr_nenoffs  = 1;
+                dp.dofpr_pad1     = 0;
+                dp.dofpr_pad2     = 0;
 
-                usdt_dof_section_add_data(probes, &p, sizeof(dof_probe_t));
+                usdt_dof_section_add_data(probes, &dp, sizeof(dof_probe_t));
                 probes->entsize = sizeof(dof_probe_t);
 
                 argidx += argc;
@@ -68,14 +61,14 @@ usdt_dof_probes_sect(usdt_dof_section_t *probes,
 int
 usdt_dof_prargs_sect(usdt_dof_section_t *prargs, usdt_provider_t *provider)
 {
-        usdt_probedef_t *pd;
+        usdt_probe_t *p;
         uint8_t i;
 
         usdt_dof_section_init(prargs, DOF_SECT_PRARGS, 2);
         prargs->entsize = 1;
 
-        for (pd = provider->probedefs; pd != NULL; pd = pd->next) {
-                for (i = 0; i < pd->argc; i++)
+        for (p = provider->probes; p != NULL; p = p->next) {
+                for (i = 0; i < p->argc; i++)
                         usdt_dof_section_add_data(prargs, &i, 1);
         }
         if (prargs->size == 0) {
@@ -93,14 +86,14 @@ int
 usdt_dof_proffs_sect(usdt_dof_section_t *proffs,
                      usdt_provider_t *provider, char *dof)
 {
-        usdt_probedef_t *pd;
-        uint32_t off;
+        usdt_probe_t *p;
+        uint64_t off;
 
         usdt_dof_section_init(proffs, DOF_SECT_PROFFS, 3);
         proffs->entsize = 4;
 
-        for (pd = provider->probedefs; pd != NULL; pd = pd->next) {
-                off = usdt_probe_offset(pd->probe, dof, pd->argc);
+        for (p = provider->probes; p != NULL; p = p->next) {
+		off = ((uint64_t) p->_fire - (uint64_t) dof);
                 if (usdt_dof_section_add_data(proffs, &off, 4) < 0) {
                         usdt_error(provider, USDT_ERROR_MALLOC);
                         return (-1);
@@ -114,14 +107,14 @@ int
 usdt_dof_prenoffs_sect(usdt_dof_section_t *prenoffs,
                        usdt_provider_t *provider, char *dof)
 {
-        usdt_probedef_t *pd;
-        uint32_t off;
+        usdt_probe_t *p;
+        uint64_t off;
 
         usdt_dof_section_init(prenoffs, DOF_SECT_PRENOFFS, 4);
         prenoffs->entsize = 4;
 
-        for (pd = provider->probedefs; pd != NULL; pd = pd->next) {
-                off = usdt_is_enabled_offset(pd->probe, dof);
+        for (p = provider->probes; p != NULL; p = p->next) {
+		off = ((uint64_t) p->_fire - (uint64_t) dof);
                 if (usdt_dof_section_add_data(prenoffs, &off, 4) < 0) {
                         usdt_error(provider, USDT_ERROR_MALLOC);
                         return (-1);

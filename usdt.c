@@ -20,24 +20,18 @@ char *usdt_errors[] = {
 };
 
 static void
-free_probedef(usdt_probedef_t *pd)
+free_probe(usdt_probe_t *p)
 {
-        int i;
-
-        switch (pd->refcnt) {
+        switch (p->refcnt) {
         case 1:
-                free((char *)pd->function);
-                free((char *)pd->name);
-                if (pd->probe) {
-                        usdt_free_tracepoints(pd->probe);
-                        free(pd->probe);
-                }
-                for (i = 0; i < pd->argc; i++)
-                        free(pd->types[i]);
-                free(pd);
+                free((char *)p->function);
+                free((char *)p->name);
+                for (int i = 0; i < p->argc; i++)
+                        free(p->types[i]);
+                free(p);
                 break;
         case 2:
-                pd->refcnt = 1;
+                p->refcnt = 1;
                 break;
         default:
                 break;
@@ -54,17 +48,20 @@ usdt_create_provider(const char *name, const char *module)
 
         provider->name = strdup(name);
         provider->module = strdup(module);
-        provider->probedefs = NULL;
+        provider->probes = NULL;
         provider->enabled = 0;
 
         return provider;
 }
 
-usdt_probedef_t *
-usdt_create_probe(const char *func, const char *name, size_t argc, const char **types)
+usdt_probe_t *
+usdt_create_probe(const char *func, const char *name, size_t argc, ...)
 {
         int i;
-        usdt_probedef_t *p;
+        va_list vl; 
+        char *arg;
+        va_start(vl, argc);
+        usdt_probe_t *p;
 
         if (argc > USDT_ARG_MAX)
                 argc = USDT_ARG_MAX;
@@ -72,72 +69,80 @@ usdt_create_probe(const char *func, const char *name, size_t argc, const char **
         if ((p = malloc(sizeof *p)) == NULL)
                 return (NULL);
 
+
+
         p->refcnt = 2;
         p->function = strdup(func);
         p->name = strdup(name);
         p->argc = argc;
-        p->probe = NULL;
 
-        for (i = 0; i < argc; i++)
-                p->types[i] = strdup(types[i]);
+
+        for(i=0; i < argc; i++) {
+          arg = va_arg(vl, char*);
+	  p->types[i] = strdup(arg);
+        }
+
+        //for(; i<USDT_ARG_MAX; i++) {
+        //  p->types[i] = noarg;
+        //}
 
         return (p);
 }
 
 void
-usdt_probe_release(usdt_probedef_t *probedef)
+usdt_probe_release(usdt_probe_t *probe)
 {
-        free_probedef(probedef);
+        free_probe(probe);
 }
 
 int
-usdt_provider_add_probe(usdt_provider_t *provider, usdt_probedef_t *probedef)
+usdt_provider_add_probe(usdt_provider_t *provider, usdt_probe_t *probe)
 {
-        usdt_probedef_t *pd;
+        usdt_probe_t *p;
 
-        if (provider->probedefs != NULL) {
-                for (pd = provider->probedefs; (pd != NULL); pd = pd->next) {
-                if ((strcmp(pd->name, probedef->name) == 0) &&
-                    (strcmp(pd->function, probedef->function) == 0)) {
+        if (provider->probes != NULL) {
+                for (p = provider->probes; (p != NULL); p = p->next) {
+                if ((strcmp(p->name, probe->name) == 0) &&
+                    (strcmp(p->function, probe->function) == 0)) {
                                 usdt_error(provider, USDT_ERROR_DUP_PROBE,
                                            provider->name, provider->module,
-                                           probedef->function, probedef->name);
+                                           probe->function, probe->name);
                                 return (-1);
                         }
                 }
         }
 
-        probedef->next = NULL;
-        if (provider->probedefs == NULL)
-                provider->probedefs = probedef;
+        probe->next = NULL;
+        if (provider->probes == NULL)
+                provider->probes = probe;
         else {
-                for (pd = provider->probedefs; (pd->next != NULL); pd = pd->next) ;
-                pd->next = probedef;
+                for (p = provider->probes; (p->next != NULL); p = p->next) ;
+                p->next = probe;
         }
 
         return (0);
 }
 
 int
-usdt_provider_remove_probe(usdt_provider_t *provider, usdt_probedef_t *probedef)
+usdt_provider_remove_probe(usdt_provider_t *provider, usdt_probe_t *probe)
 {
-        usdt_probedef_t *pd, *prev_pd = NULL;
+        usdt_probe_t *p, *prev_p = NULL;
 
-        if (provider->probedefs == NULL) {
+        if (provider->probes == NULL) {
                 usdt_error(provider, USDT_ERROR_NOPROBES);
                 return (-1);
         }
 
-        for (pd = provider->probedefs; (pd != NULL);
-             prev_pd = pd, pd = pd->next) {
+        for (p = provider->probes; (p != NULL);
+             prev_p = p, p = p->next) {
 
-                if ((strcmp(pd->name, probedef->name) == 0) &&
-                    (strcmp(pd->function, probedef->function) == 0)) {
+                if ((strcmp(p->name, probe->name) == 0) &&
+                    (strcmp(p->function, probe->function) == 0)) {
 
-                        if (prev_pd == NULL)
-                                provider->probedefs = pd->next;
+                        if (prev_p == NULL)
+                                provider->probes = p->next;
                         else
-                                prev_pd->next = pd->next;
+                                prev_p->next = p->next;
 
                         return (0);
                 }
@@ -145,7 +150,7 @@ usdt_provider_remove_probe(usdt_provider_t *provider, usdt_probedef_t *probedef)
 
         usdt_error(provider, USDT_ERROR_REMOVE_PROBE,
                    provider->name, provider->module,
-                   probedef->function, probedef->name);
+                   probe->function, probe->name);
         return (-1);
 }
 
@@ -154,7 +159,6 @@ usdt_provider_enable(usdt_provider_t *provider)
 {
         usdt_strtab_t strtab;
         usdt_dof_file_t *file;
-        usdt_probedef_t *pd;
         int i;
         size_t size;
         usdt_dof_section_t sects[5];
@@ -164,16 +168,9 @@ usdt_provider_enable(usdt_provider_t *provider)
                 return (0); /* not fatal */
         }
 
-        if (provider->probedefs == NULL) {
+        if (provider->probes == NULL) {
                 usdt_error(provider, USDT_ERROR_NOPROBES);
                 return (-1);
-        }
-
-        for (pd = provider->probedefs; pd != NULL; pd = pd->next) {
-                if ((pd->probe = malloc(sizeof(*pd->probe))) == NULL) {
-                        usdt_error(provider, USDT_ERROR_MALLOC);
-                        return (-1);
-                }
         }
 
         if ((usdt_strtab_init(&strtab, 0)) < 0) {
@@ -225,8 +222,6 @@ usdt_provider_enable(usdt_provider_t *provider)
 int
 usdt_provider_disable(usdt_provider_t *provider)
 {
-        usdt_probedef_t *pd;
-
         if (provider->enabled == 0)
                 return (0);
 
@@ -237,31 +232,6 @@ usdt_provider_disable(usdt_provider_t *provider)
 
         usdt_dof_file_free(provider->file);
         provider->file = NULL;
-
-        /* We would like to free the tracepoints here too, but OS X
-         * (and to a lesser extent Illumos) struggle with this:
-         *
-         * If a provider is repeatedly disabled and re-enabled, and is
-         * allowed to reuse the same memory for its tracepoints, *and*
-         * there's a DTrace consumer running with enablings for these
-         * probes, tracepoints are not always cleaned up sufficiently
-         * that the newly-created probes work.
-         *
-         * Here, then, we will leak the memory holding the
-         * tracepoints, which serves to stop us reusing the same
-         * memory address for new tracepoints, avoiding the bug.
-         */
-
-        for (pd = provider->probedefs; (pd != NULL); pd = pd->next) {
-                /* may have an as yet never-enabled probe on an
-                   otherwise enabled provider */
-                if (pd->probe) {
-                        /* usdt_free_tracepoints(pd->probe); */
-                        free(pd->probe);
-                        pd->probe = NULL;
-                }
-        }
-
         provider->enabled = 0;
 
         return (0);
@@ -270,11 +240,11 @@ usdt_provider_disable(usdt_provider_t *provider)
 void
 usdt_provider_free(usdt_provider_t *provider)
 {
-        usdt_probedef_t *pd, *next;
+        usdt_probe_t *p, *next;
 
-        for (pd = provider->probedefs; pd != NULL; pd = next) {
-                next = pd->next;
-                free_probedef(pd);
+        for (p = provider->probes; p != NULL; p = next) {
+                next = p->next;
+                free_probe(p);
         }
 
         free((char *)provider->name);
@@ -285,17 +255,54 @@ usdt_provider_free(usdt_provider_t *provider)
 int
 usdt_is_enabled(usdt_probe_t *probe)
 {
-        if (probe != NULL)
-                return (*probe->isenabled_addr)();
-        else
-                return 0;
+  if(probe->_fire == NULL) {
+    return 0;
+  }
+  if(((*(char *)probe->_fire) & 0x90) == 0x90) {
+    return 0;
+  }
+  return 1;
 }
 
 void
-usdt_fire_probe(usdt_probe_t *probe, size_t argc, void **nargv)
+usdt_fire_probe(usdt_probe_t *probe, ...)
 {
-        if (probe != NULL)
-                usdt_probe_args(probe->probe_addr, argc, nargv);
+  if(probe->_fire == NULL) {
+    return;
+  }
+  va_list vl;
+  va_start(vl, probe);
+  uint64_t arg[6] = {0};
+  for(int i=0; i < probe->argc; i++) {
+    arg[i] = va_arg(vl, uint64_t);
+  }
+
+  switch(probe->argc) {
+    case 0:
+      ((void (*)())probe->_fire) ();
+      return;
+    case 1:
+      ((void (*)())probe->_fire) (arg[0]);
+      return;
+    case 2:
+      ((void (*)())probe->_fire) (arg[0], arg[1]);
+      return;
+    case 3:
+      ((void (*)())probe->_fire) (arg[0], arg[1], arg[2]);
+      return;
+    case 4:
+      ((void (*)())probe->_fire) (arg[0], arg[1], arg[2], arg[3]);
+      return;
+    case 5:
+      ((void (*)())probe->_fire) (arg[0], arg[1], arg[2], arg[3], arg[4]);
+      return;
+    case 6:
+      ((void (*)())probe->_fire) (arg[0], arg[1], arg[2], arg[3], arg[4], arg[5]);
+      return;
+    default:
+      ((void (*)())probe->_fire) ();
+      return;
+  }
 }
 
 static void

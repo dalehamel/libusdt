@@ -24,11 +24,11 @@ usdt_provider_dof_size(usdt_provider_t *provider, usdt_strtab_t *strtab)
         int args = 0;
         int probes = 0;
         size_t size = 0;
-        usdt_probedef_t *pd;
+        usdt_probe_t *p;
         size_t sections[8];
 
-        for (pd = provider->probedefs; pd != NULL; pd = pd->next) {
-                args += pd->argc;
+        for (p = provider->probes; p != NULL; p = p->next) {
+                args += p->argc;
                 probes++;
         }
 
